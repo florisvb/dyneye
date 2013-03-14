@@ -37,19 +37,26 @@ class Optic_Flow_Calculator:
         self.indices_for_fit = np.arange(0,260).tolist()
         self.alphas = np.arange(0,260)
         self.yindex=5
+        self.unit_calibration = 4.8387
         
         # Raw Image Subscriber
         self.image_sub = rospy.Subscriber(self.image_source,Image,self.image_callback)
         
-    def image_callback(self,data):
+    def image_callback(self,image):
         try:
-            curr_image = self.bridge.imgmsg_to_cv(data, "mono8")
+            curr_image = self.bridge.imgmsg_to_cv(image, "mono8")
             
             # For first loop
             if self.prev_image is not None:
                 prev_image = self.prev_image
             else:
                 prev_image = curr_image
+                
+            # get times
+            secs = image.header.stamp.secs
+            nsecs = image.header.stamp.nsecs
+            curr_time = float(secs) + float(nsecs)*1e-9
+            dt = curr_time - self.last_time
                 
             if self.velx is None:
                 self.velx = cv.CreateImage((curr_image.width, curr_image.height), cv.IPL_DEPTH_32F,1)
@@ -63,9 +70,10 @@ class Optic_Flow_Calculator:
             # fit line
             self.linear_model.fit(velx_np[self.indices_for_fit,self.yindex],inputs=self.alphas)
             
-            self.optic_flow_pub.publish(self.linear_model.parameters['slope'])
+            self.optic_flow_pub.publish(self.linear_model.parameters['slope']*dt*self.unit_calibration)
             
             self.prev_image = curr_image
+            self.last_time = curr_time
               
         except CvBridgeError, e:
             print e

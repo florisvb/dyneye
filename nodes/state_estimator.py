@@ -8,6 +8,7 @@ import pickle
 import time
 
 from dyneye.srv import *
+from std_msgs.msg import *
 
 from optparse import OptionParser
 
@@ -46,6 +47,7 @@ class StateEstimator:
         self.r_desired = -0.1
         self.last_time = None
         
+        self.publish_on_estimate = True
         self.use_optimal_kalman_gain = True
         
         #####################################################################
@@ -69,7 +71,12 @@ class StateEstimator:
         # ROS stuff
         self.service_estimator = rospy.Service('state_estimator_service', StateEstimatorSrv, self.get_estimate)
         self.service_controller = rospy.Service('controller_service', ControllerSrv, self.get_control)
+        self.control_publisher = rospy.Publisher('dyneye_control', Float32)
+        rospy.Subscriber("camera/optic_flow", Float32, self.optic_flow_callback)
         rospy.spin()
+        
+    def optic_flow_callback(self, data):
+        estimate = get_estimate(data.data)
         
     def on_shutdown(self):
         f = open(self.savepath, 'w')
@@ -133,6 +140,9 @@ class StateEstimator:
         self.data['observations'].append(observations.r)
         self.data['control'].append(a_control)
         self.last_time = t
+        
+        if self.publish_on_estimate:
+            self.control_publisher.publish(self.get_control())
         
         return [self.xhat[i,0] for i in range(len(self.xhat))]
         
