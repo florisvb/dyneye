@@ -37,7 +37,7 @@ class Optic_Flow_Calculator:
         self.indices_for_fit = np.arange(0,260).tolist()
         self.alphas = np.arange(0,260)
         self.yindex=5
-        self.unit_calibration = 4.8387
+        self.unit_calibration = 4838.7
         
         # Raw Image Subscriber
         self.image_sub = rospy.Subscriber(self.image_source,Image,self.image_callback)
