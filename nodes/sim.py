@@ -20,14 +20,15 @@ class Simulation:
         self.control = [0]
         self.observations = [0]
         
-        self.control_noise = 0.001
-        self.observation_noise = 0.01
+        self.control_noise = 0.00001
+        self.observation_noise = 0.00001
         
         self.last_time = None
         
         # ROS stuff
         rospy.wait_for_service('state_estimator_service')
         rospy.wait_for_service('controller_service')
+        rospy.on_shutdown(self.on_shutdown)
         
         self.estimator = rospy.ServiceProxy('state_estimator_service', StateEstimatorSrv)
         self.controller = rospy.ServiceProxy('controller_service', ControllerSrv)
@@ -69,6 +70,9 @@ class Simulation:
             pos = self.states[-1][0]
             r.sleep()
         
+        self.plot()
+        
+    def on_shutdown(self):
         self.plot()
         
     def plot(self):

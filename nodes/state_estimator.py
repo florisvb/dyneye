@@ -85,6 +85,7 @@ class StateEstimator:
         
     def get_control(self, query=None):
         a_control = -1*self.gain_kp*(self.xhat[3,0] - self.r_desired) -1*self.gain_kd*(self.xhat[4,0] - 0) 
+        #a_control = np.cos(time.time()*np.pi*1)*.1
         return a_control
         
     def get_estimate(self, observations):
@@ -99,7 +100,7 @@ class StateEstimator:
         d_m = self.xhat[0,0] + self.xhat[1,0]*dt
         v_m = self.xhat[1,0] + self.xhat[2,0]*dt
         a_m = a_control
-        r_m = self.xhat[3,0] + self.xhat[4,0]*dt #desired_r
+        r_m = self.xhat[3,0] + self.xhat[4,0]*dt
         dr_m = 0
         xhat_k_k0 = np.matrix([d_m, v_m, a_m, r_m, dr_m]).T
         
