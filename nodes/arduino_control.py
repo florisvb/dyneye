@@ -21,7 +21,8 @@ class ArduinoControl:
         self.baudrate = baudrate
         timeout = 1
         
-        self.METERS_TO_STEPS = 20
+        #INCHES_TO_STEPS = 1000./1.079
+        self.METERS_TO_STEPS = 1000./0.02740
         self.STEPS_TO_METERS = 1/float(self.METERS_TO_STEPS)
         
         # instantiate stepper class
@@ -30,38 +31,87 @@ class ArduinoControl:
         print
         
         # reset position to zero
-        self.astep.reset_step_counter()
+        #self.astep.reset_step_counter()
+        self.find_home()
+        pos = self.get_pos()
+        #self.astep.disable_interrupts(0)
         self.last_time = None
+        self.acceleration = 0
+        self.t_start = None
         
         # Save states
         fname = 'arduino_stepper_data_' + time.strftime("%Y%m%d_%s") + '.pickle'
         path = '~/'
         self.savepath = os.path.join(os.path.expanduser(path), fname)
-        self.data = []
-        self.data.setdefault('time', [])
-        self.data.setdefault('position_steps', [])
-        self.data.setdefault('velocity_steps', [])
-        self.data.setdefault('position', [])
-        self.data.setdefault('velocity', [])
+        self.data = {}
+        self.data.setdefault('time', [rospy.get_time()])
+        self.data.setdefault('position_steps', [pos])
+        self.data.setdefault('velocity_steps', [0])
+        self.data.setdefault('position', [pos*self.STEPS_TO_METERS])
+        self.data.setdefault('velocity', [0])
+        self.data.setdefault('control', [0])
         rospy.on_shutdown(self.on_shutdown)
         
         ## ROS stuff
-        rospy.Subscriber("dyneye_control", Float32, self.control)
+        rospy.Subscriber("dyneye_control", Float32, self.save_control)
         rospy.spin()
+        
+        if 0:
+            r = rospy.Rate(60) # 10hz
+            while not rospy.is_shutdown():
+                self.control()
+                r.sleep()
+                
+    def get_pos(self):
+        pos = self.astep.get_pos()+4171
+        return pos
+            
+    def find_home(self):
+        vel = 2000
+        self.astep.set_interrupt_pins(0,1)
+        self.astep.enable_interrupts()
 
-    def control(self, data):
-        acceleration = data.data
+        self.astep.set_vel(-1*np.abs(vel))
+        interrupted = False
+        
+        while not interrupted:
+            interrupt_0, interrupt_1 = self.astep.get_interrupt_states()
+            if interrupt_0 == 1:
+                interrupted = True
+            time.sleep(.01)
+        
+        self.astep.reset_step_counter()
+        self.astep.disable_interrupts(100)
+        self.astep.go_to_pos(45000,5000)
+        
+    def save_control(self, data):
+        self.acceleration = data.data
+        self.control()
+        
+    def control(self):
+        acceleration = self.acceleration
+        
+        if 0:
+            if self.t_start is None:
+                self.t_start = rospy.get_time()
+            r = self.data['velocity'][-1]/self.data['position'][-1]
+            r_des = -.1
+            acceleration = -3*(r - r_des)# - 1*np.cos((rospy.get_time()-self.t_start)*np.pi)
+            
+        
         t = rospy.get_time()
         if self.last_time is not None:
             dt = t - self.last_time
         else:
             dt = 0.01
             
-        new_vel = self.data['velocity'][-1] + acceleration*dt
+        self.data['control'].append(acceleration)
+            
+        new_vel = self.data['velocity'][-1] + acceleration*dt/2.
         new_vel_in_steps_per_second = int(new_vel*self.METERS_TO_STEPS)
         self.astep.set_vel(new_vel_in_steps_per_second)
         
-        pos = self.astep.get_pos()
+        pos = self.get_pos()
         
         self.data['time'].append(t)
         self.data['position_steps'].append(pos)
@@ -78,9 +128,9 @@ class ArduinoControl:
         
         
 if __name__=='__main__':
-    rospy.init_node('state_estimator')
-    port = 'dev/tty/ACM0'
-    baudrate = 19200
+    rospy.init_node('arduino_control')
+    port = '/dev/ttyACM0'
+    baudrate = 38400
     arduino_control = ArduinoControl(port, baudrate)
         
         

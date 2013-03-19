@@ -21,7 +21,7 @@ class Simulation:
         self.observations = [0]
         
         self.control_noise = 0.00001
-        self.observation_noise = 0.00001
+        self.observation_noise = 0.1
         
         self.last_time = None
         
@@ -53,15 +53,19 @@ class Simulation:
         self.observations.append(r_)
         self.last_time = t
         
-        
-        observations_noisy = r_ + scipy.stats.distributions.norm.rvs(0,self.observation_noise)
+        delay = -1
+        try:
+            r_obs = self.observations[delay]
+        except:
+            r_obs = r_
+        observations_noisy = r_obs + scipy.stats.distributions.norm.rvs(0,self.observation_noise)
         print d
         
         return observations_noisy
     
     def run_sim(self):
         
-        r = rospy.Rate(100) # 10hz
+        r = rospy.Rate(60) # 10hz
         pos = 10
         while pos > 0.01:
             control = self.controller(1)   

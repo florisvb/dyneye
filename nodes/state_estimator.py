@@ -21,15 +21,15 @@ class StateEstimator:
         
         ## noise estimates
         # process
-        self.Q_k = np.eye(5)*10
-        self.Q_k[4,4] = 1e-10
+        self.Q_k = np.eye(5)*1
+        self.Q_k[4,4] = 100
         # observer
         self.R_k = np.eye(5)
-        self.R_k[0,0] = 100000
-        self.R_k[1,1] = 1000000
+        self.R_k[0,0] = 10000
+        self.R_k[1,1] = 1000
         self.R_k[2,2] = 1
-        self.R_k[3,3] = 10000
-        self.R_k[4,4] = 10000000
+        self.R_k[3,3] = 10
+        self.R_k[4,4] = 100000
         
         ## dynamics models
         self.H_k = np.eye(5)
@@ -42,9 +42,9 @@ class StateEstimator:
                             [0,0,0,0,1]])
                             
         ## initialization
-        self.xhat = np.matrix([10,-1,0,-.1,0]).T
+        self.xhat = np.matrix([5,0,0,-.1,0]).T
         self.cov = np.eye(5)*10
-        self.r_desired = -0.1
+        self.r_desired = -.1
         self.last_time = None
         
         self.publish_on_estimate = True
@@ -52,9 +52,9 @@ class StateEstimator:
         
         #####################################################################
         # Controller
-        self.gain_kp = 1
-        self.gain_kd = 1e3
-        
+        self.gain_kp = 6
+        self.gain_kd = 20
+              
         #####################################################################
         # Save states
         fname = 'state_estimates_' + time.strftime("%Y%m%d_%s") + '.pickle'
@@ -72,11 +72,11 @@ class StateEstimator:
         self.service_estimator = rospy.Service('state_estimator_service', StateEstimatorSrv, self.get_estimate)
         self.service_controller = rospy.Service('controller_service', ControllerSrv, self.get_control)
         self.control_publisher = rospy.Publisher('dyneye_control', Float32)
-        rospy.Subscriber("camera/optic_flow", Float32, self.optic_flow_callback)
+        rospy.Subscriber("camnode/lk", Float32, self.optic_flow_callback)
         rospy.spin()
         
     def optic_flow_callback(self, data):
-        estimate = get_estimate(data.data)
+        estimate = self.get_estimate(data.data)
         
     def on_shutdown(self):
         f = open(self.savepath, 'w')
@@ -84,11 +84,12 @@ class StateEstimator:
         f.close()
         
     def get_control(self, query=None):
-        a_control = -1*self.gain_kp*(self.xhat[3,0] - self.r_desired) -1*self.gain_kd*(self.xhat[4,0] - 0) 
+        a_control = -1*self.gain_kp*(self.xhat[3,0] - self.r_desired) -1*self.gain_kd*np.abs(self.xhat[1,0])*(self.xhat[4,0] - 0) 
         #a_control = np.cos(time.time()*np.pi*1)*.1
         return a_control
         
     def get_estimate(self, observations):
+        #observations = observations.r
         a_control = self.get_control()
         t = rospy.get_time()
         if self.last_time is not None:
@@ -99,9 +100,9 @@ class StateEstimator:
         ## predict
         d_m = self.xhat[0,0] + self.xhat[1,0]*dt
         v_m = self.xhat[1,0] + self.xhat[2,0]*dt
-        a_m = a_control
+        a_m = self.xhat[2,0]
         r_m = self.xhat[3,0] + self.xhat[4,0]*dt
-        dr_m = 0
+        dr_m = self.xhat[4,0]
         xhat_k_k0 = np.matrix([d_m, v_m, a_m, r_m, dr_m]).T
         
         self.F[0,1] = dt
@@ -112,10 +113,10 @@ class StateEstimator:
 
         ## observer
         a_o = a_control
-        r_o = observations.r
-        dr_o = (a_m/d_m - self.xhat[3,0]**2)
-        d_o = self.xhat[2,0]/(self.xhat[3,0]**2 + self.xhat[4,0])
-        v_o = self.xhat[3,0]*self.xhat[0,0]
+        r_o = float(observations)
+        dr_o = ((r_o - self.xhat[3,0])/dt)
+        d_o = a_m / (self.r_desired**2)*.214
+        v_o = self.r_desired*self.xhat[0,0]
         x_obs = np.matrix([d_o, v_o, a_o, r_o, dr_o]).T
         innovation = x_obs - xhat_k_k0
         
@@ -138,7 +139,7 @@ class StateEstimator:
         # save data
         self.data['time'].append(t)
         self.data['states'].append(self.xhat)
-        self.data['observations'].append(observations.r)
+        self.data['observations'].append(observations)
         self.data['control'].append(a_control)
         self.last_time = t
         
