@@ -43,43 +43,48 @@ def plot(estimates_data, stepper_data=None):
         
         ax_pos.plot(t, stepper_pos, 'blue')
         ax_vel.plot(t, stepper_vel, 'blue')
-        ax_control.plot(t, stepper_control, 'blue', zorder=10)
+        #ax_control.plot(t, stepper_control, 'blue', zorder=10)
         
         ax_optic_flow.plot(t, stepper_vel/stepper_pos, 'blue', zorder=10)
     else:
         t_start = 0
     
     # plot estimates data
-    t = np.array(estimates_data['time'])
-    t -= t_start
     
-    l = len(estimates_data['time'])
+    
+    l = np.max([len(estimates_data['time'])])
     def fix_arr_len(arr):
         while len(arr) < l:
             arr.append(arr[-1])
         return arr
     
+    fix_arr_len(estimates_data['time'])
     fix_arr_len(estimates_data['states'])
     fix_arr_len(estimates_data['control'])
     fix_arr_len(estimates_data['observations'])
     
+    t = np.array(estimates_data['time'])
+    t -= t_start
+    
     states = np.array(estimates_data['states'])
     control = np.array(estimates_data['control'])
     observations = np.array(estimates_data['observations'])
-        
     
     estimates_pos = states[:,0]
     estimates_vel = states[:,1]
-    estimates_optic_flow_est = states[:,3]
-    estimates_optic_flow_real = observations
+    estimates_optic_flow_est = states[:,4]
+    estimates_optic_flow_real = observations[:,0]
     estimates_control = control
     
     #ax_optic_flow.plot(t, estimates_optic_flow_real, 'blue')
     ax_optic_flow.plot(t, estimates_optic_flow_est, 'red')
     
+    ##
     ax_control.plot(t, estimates_control, 'blue')
     ax_control.plot(t, states[:,2], 'red')
     
+    
+    ax_pos.plot(t, observations[:,2], 'g.', zorder=-10)
     ax_pos.plot(t, estimates_pos, 'red')
     ax_vel.plot(t, estimates_vel, 'red')
     
@@ -117,7 +122,7 @@ def plot(estimates_data, stepper_data=None):
         r_stepper = stepper_vel/(stepper_pos)
     
         t_estimates = np.array(estimates_data['time'])
-        r_estimates = np.array(estimates_data['observations'])
+        r_estimates = np.array(estimates_data['observations'])[:,0]
         pos_estimates = np.array(estimates_data['states'])[:,0].reshape(len(r_estimates))
     
         t_interp_start = np.max([t_stepper[0], t_estimates[0]])
@@ -157,7 +162,7 @@ def plot(estimates_data, stepper_data=None):
         lm.fit(r_stepper_interp[indices], inputs=r_estimates_interp[indices])
         
         if 1:
-            x = np.linspace(-1,0, 100)
+            x = np.linspace(-20,0, 100)
             y = lm.get_val(x)
             ax.plot(x,y,'red')
             
@@ -169,16 +174,28 @@ def plot(estimates_data, stepper_data=None):
         ##
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(states[:,0], states[:,1], '.')
+        
+        t = np.array(estimates_data['time'])
+        t -= t_start
+        ax.plot(t, states[:,4], '.')
     
+    t = np.array(estimates_data['time'])
+    t -= t_start
+    fig = plt.figure()
+    ax1 = fig.add_subplot(141)
+    ax2 = fig.add_subplot(142)
+    ax3 = fig.add_subplot(143)
+    ax4 = fig.add_subplot(144)
+    
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(states[:,-1])
     
     
     plt.show()
     
-    
-    
-    
-    
+    return states
     
     
     

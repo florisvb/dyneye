@@ -107,7 +107,7 @@ class ArduinoControl:
             
         self.data['control'].append(acceleration)
             
-        new_vel = self.data['velocity'][-1] + acceleration*dt/2.
+        new_vel = self.data['velocity'][-1] + acceleration*dt
         new_vel_in_steps_per_second = int(new_vel*self.METERS_TO_STEPS)
         self.astep.set_vel(new_vel_in_steps_per_second)
         

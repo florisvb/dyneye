@@ -22,15 +22,25 @@ class StateEstimator:
         ## noise estimates
         # process
         self.Q_k = np.eye(5)*1
-        self.Q_k[4,4] = 100
+        self.Q_k[0,0] = 1e-1
+        self.Q_k[1,1] = 1e-1
+        self.Q_k[3,3] = 1e-2
+        self.Q_k[4,4] = 1e-3
         # observer
         self.R_k = np.eye(5)
-        self.R_k[0,0] = 10000
-        self.R_k[1,1] = 1000
-        self.R_k[2,2] = 1
-        self.R_k[3,3] = 10
-        self.R_k[4,4] = 100000
         
+        if 1:
+            self.R_k[0,0] = 1000
+            self.R_k[1,1] = 100
+            self.R_k[2,2] = 1
+            self.R_k[3,3] = 1
+            self.R_k[4,4] = 10000000000
+        if  0:
+            self.R_k[0,0] = 1
+            self.R_k[1,1] = 1
+            self.R_k[2,2] = 1
+            self.R_k[3,3] = 1
+            self.R_k[4,4] = 1
         ## dynamics models
         self.H_k = np.eye(5)
         self.H_k[4,4] = 0
@@ -42,7 +52,7 @@ class StateEstimator:
                             [0,0,0,0,1]])
                             
         ## initialization
-        self.xhat = np.matrix([5,0,0,-.1,0]).T
+        self.xhat = np.matrix([1,0,0,-.1,0]).T
         self.cov = np.eye(5)*10
         self.r_desired = -.1
         self.last_time = None
@@ -55,6 +65,8 @@ class StateEstimator:
         self.gain_kp = 6
         self.gain_kd = 20
               
+        self.fps = 50
+              
         #####################################################################
         # Save states
         fname = 'state_estimates_' + time.strftime("%Y%m%d_%s") + '.pickle'
@@ -65,6 +77,8 @@ class StateEstimator:
         self.data.setdefault('states', [])
         self.data.setdefault('observations', [])
         self.data.setdefault('control', [])
+        self.data.setdefault('covariance', [])
+        self.data.setdefault('kalmangain', [])
         rospy.on_shutdown(self.on_shutdown)
         
         #####################################################################
@@ -84,7 +98,11 @@ class StateEstimator:
         f.close()
         
     def get_control(self, query=None):
-        a_control = -1*self.gain_kp*(self.xhat[3,0] - self.r_desired) -1*self.gain_kd*np.abs(self.xhat[1,0])*(self.xhat[4,0] - 0) 
+        a_control = -1*self.gain_kp*(self.xhat[3,0] - self.r_desired) #-1*self.gain_kd*np.abs(self.xhat[1,0])*(self.xhat[4,0] - 0) 
+        if 0:
+            k2 = -2*self.r_desired
+            k1 = k2**2/4.
+            a_control = -1*k1-k2*self.xhat[3,0]
         #a_control = np.cos(time.time()*np.pi*1)*.1
         return a_control
         
@@ -96,13 +114,13 @@ class StateEstimator:
             dt = t - self.last_time
         else:
             dt = 0.01
-
+            
         ## predict
         d_m = self.xhat[0,0] + self.xhat[1,0]*dt
-        v_m = self.xhat[1,0] + self.xhat[2,0]*dt
+        v_m = self.xhat[3,0]*self.xhat[0,0]#self.xhat[1,0] + self.xhat[2,0]*dt
         a_m = self.xhat[2,0]
-        r_m = self.xhat[3,0] + self.xhat[4,0]*dt
-        dr_m = self.xhat[4,0]
+        r_m = self.xhat[3,0] #+ self.xhat[4,0]*dt
+        dr_m = 0 #-1*self.xhat[3,0]**2 # + a_control/self.xhat[0,0]#self.xhat[4,0]
         xhat_k_k0 = np.matrix([d_m, v_m, a_m, r_m, dr_m]).T
         
         self.F[0,1] = dt
@@ -111,14 +129,25 @@ class StateEstimator:
                         
         P_k_k0 = self.F*self.cov*self.F.T + self.Q_k
 
-        ## observer
-        a_o = a_control
-        r_o = float(observations)
-        dr_o = ((r_o - self.xhat[3,0])/dt)
-        d_o = a_m / (self.r_desired**2)*.214
-        v_o = self.r_desired*self.xhat[0,0]
-        x_obs = np.matrix([d_o, v_o, a_o, r_o, dr_o]).T
-        innovation = x_obs - xhat_k_k0
+        ## controlled observer
+        if 1:
+            a_o = a_control*self.fps/100.
+            r_o = float(observations)
+            dr_o = ((r_o - self.xhat[3,0])/dt)
+            d_o = a_o / (self.xhat[3,0]**2 + self.xhat[4,0])
+            v_o = self.xhat[3,0]*d_o
+            x_obs = np.matrix([d_o, v_o, a_o, r_o, dr_o]).T
+            innovation = x_obs - xhat_k_k0
+            
+        ## general observer
+        if 0:
+            a_o = a_control/.2
+            r_o = float(observations)
+            dr_o = ((r_o - self.xhat[3,0])/dt)
+            d_o = a_o / ( (r_o**2) + dr_o)
+            v_o = r_o*d_o
+            x_obs = np.matrix([d_o, v_o, a_o, r_o, dr_o]).T
+            innovation = x_obs - xhat_k_k0
         
         ## update
         S_k = self.H_k*P_k_k0*self.H_k.T + self.R_k
@@ -139,8 +168,10 @@ class StateEstimator:
         # save data
         self.data['time'].append(t)
         self.data['states'].append(self.xhat)
-        self.data['observations'].append(observations)
+        self.data['observations'].append([d_o, v_o, a_o, r_o, dr_o])
         self.data['control'].append(a_control)
+        self.data['covariance'].append(P_k_k.diagonal().tolist()[0])
+        self.data['kalmangain'].append(K_k_opt.diagonal().tolist()[0])
         self.last_time = t
         
         if self.publish_on_estimate:

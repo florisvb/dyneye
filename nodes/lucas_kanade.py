@@ -37,7 +37,7 @@ class Optic_Flow_Calculator:
         self.indices_for_fit = np.arange(292,465).tolist()
         self.alphas = np.arange(0,640)
         self.yindex=5
-        self.unit_calibration = 4838.7*0.36929056770764462
+        self.unit_calibration = 4838.7*0.0069546813193345491*1.1*(1/50.) # calibrated at 50 fps
         
         # Raw Image Subscriber
         self.image_sub = rospy.Subscriber(self.image_source,Image,self.image_callback)
@@ -76,7 +76,7 @@ class Optic_Flow_Calculator:
             #self.linear_model.fit(velx_np[self.yindex, self.indices_for_fit],inputs=self.alphas)
             self.linear_model.ransac(velx_mean[self.indices_for_fit].T, inputs=self.alphas[self.indices_for_fit], min_data_vals=30, max_iterations=5, threshold=100.0, num_vals_req=30)
             
-            self.optic_flow_pub.publish(-1*self.linear_model.parameters['slope']*dt*self.unit_calibration)
+            self.optic_flow_pub.publish(-1*self.linear_model.parameters['slope']*self.unit_calibration/dt)
             
             self.prev_image = curr_image
             self.last_time = curr_time
