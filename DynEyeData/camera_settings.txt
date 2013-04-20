@@ -1,0 +1,6 @@
+settings:
+
+fps: 50
+exposure: 5000
+gain: 200
+
