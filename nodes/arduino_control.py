@@ -89,30 +89,39 @@ class ArduinoControl:
         self.control()
         
     def control(self):
-        acceleration = self.acceleration
-        
-        if 0:
-            if self.t_start is None:
-                self.t_start = rospy.get_time()
-            r = self.data['velocity'][-1]/self.data['position'][-1]
-            r_des = -.1
-            acceleration = -3*(r - r_des)# - 1*np.cos((rospy.get_time()-self.t_start)*np.pi)
-            
-        
+    
         t = rospy.get_time()
         if self.last_time is not None:
             dt = t - self.last_time
         else:
             dt = 0.01
+    
+        if 1:
+            acceleration = self.acceleration
             
-        self.data['control'].append(acceleration)
+            if 0:
+                if self.t_start is None:
+                    self.t_start = rospy.get_time()
+                r = self.data['velocity'][-1]/self.data['position'][-1]
+                r_des = -.1
+                acceleration = -3*(r - r_des)# - 1*np.cos((rospy.get_time()-self.t_start)*np.pi)
             
-        new_vel = self.data['velocity'][-1] + acceleration*dt
-        new_vel_in_steps_per_second = int(new_vel*self.METERS_TO_STEPS)
-        self.astep.set_vel(new_vel_in_steps_per_second)
+                
+            new_vel = self.data['velocity'][-1] + acceleration*dt
+            new_vel_in_steps_per_second = int(new_vel*self.METERS_TO_STEPS)
+            self.astep.set_vel(new_vel_in_steps_per_second)
+        
+        else:
+            des_vel = -.3
+            vel_err = (self.data['velocity'][-1] - des_vel)
+            acceleration = -5*vel_err
+            new_vel = self.data['velocity'][-1] + acceleration*dt
+            new_vel_in_steps_per_second = int(new_vel*self.METERS_TO_STEPS)
+            self.astep.set_vel(new_vel_in_steps_per_second)
         
         pos = self.get_pos()
         
+        self.data['control'].append(acceleration)
         self.data['time'].append(t)
         self.data['position_steps'].append(pos)
         self.data['position'].append(pos*self.STEPS_TO_METERS)

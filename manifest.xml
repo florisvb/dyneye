@@ -13,6 +13,7 @@
   <depend package="sensor_msgs"/>
   <depend package="geometry_msgs"/>
   <depend package="cv_bridge"/>
+  <depend package="save_ros_movie"/>
   
 </package>
 
