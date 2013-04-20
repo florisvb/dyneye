@@ -8,24 +8,9 @@ import data_fit
 import copy
 import fly_plot_lib.plot as fpl
 
-
+from data_fit import least_squares
 
 import pykalman
-
-def kalman_smoother(data, F, H, Q, R, initx, initv, plot=False):
-    os = H.shape[0]
-    ss = F.shape[0]
-    
-        
-    xsmooth,Vsmooth = adskalman.kalman_smoother(data,F,H,Q,R,initx,initv)
-    print xsmooth.shape
-    if plot:
-        fig = plt.figure()
-        plt.plot(data[:], '.')
-        plt.plot(xsmooth[:,0])
-
-    return xsmooth,Vsmooth
-
 
 def fix_array_size(data):
     l = []
@@ -39,7 +24,7 @@ def fix_array_size(data):
         data[key] = item
     return data
     
-    
+'''
 def dyneye_observer(control, rdes, fps):
     posest = control / rdes**2
     return posest
@@ -67,17 +52,19 @@ def kalman_smooth(estimates_data, stepper_data):
     (smoothed_state_means, smoothed_state_covariances) = kf.filter(measurements)
     
     return stepper_data['time'], smoothed_state_means
-            
+'''
+
 def interpolate_to_same_time(estimates_data, stepper_data):
     
     estimates_data = fix_array_size(estimates_data)
-    estimates_data['time'] -= estimates_data['time'][0]
+    tstart = copy.copy(estimates_data['time'][0])
+    estimates_data['time'] -= tstart
     stepper_data = fix_array_size(stepper_data)
-    stepper_data['time'] -= stepper_data['time'][0]
+    stepper_data['time'] -= tstart
     
     t_interp_start = np.max([stepper_data['time'][0], estimates_data['time'][0]])
     t_interp_stop = np.min([stepper_data['time'][-1], estimates_data['time'][-1]])
-    t_interp = np.arange(t_interp_start, t_interp_stop, 0.005)
+    t_interp = np.arange(t_interp_start, t_interp_stop, 0.02)
     
     def interp_data(data, t_interp):
         data_time = copy.copy(data['time'])
@@ -94,7 +81,127 @@ def interpolate_to_same_time(estimates_data, stepper_data):
     estimates_interp = interp_data(estimates_data, t_interp)
 
     return estimates_interp, stepper_interp
+    
 
+def sequential_least_squares_observer(estimates_data):
+    optic_flow_noise = 0.006
+    rdes = -.1
+    fps = 50.
+    
+    LSE = least_squares.LeastSquaresEstimator()
+    Hfunc = lambda t: np.exp(rdes*t)
+    H = least_squares.H_LTI([Hfunc])
+    
+    if 0: # works
+        LSE.initialize_with_guess(np.matrix([3]),np.matrix([1000]))
+        
+        measurements = estimates_data['control']*fps/100. / rdes**2
+        indices = np.arange(100,1000)
+        best_guess = []
+        best_d0_guess = 3
+        for i, measurement in enumerate(measurements):
+            if i in indices:
+                t = estimates_data['time'][i]
+                Ht = H(t)
+                LSE.update([measurement], Ht)
+                best_guess.append(LSE.xhat[0,0]*Ht[0,0])
+                best_d0_guess = LSE.xhat[0,0]
+            else:
+                try:
+                    t = estimates_data['time'][i]
+                    Ht = H(t)[0,0]
+                    best_guess.append(best_d0_guess*Ht)
+                except:
+                    best_guess = [best_d0_guess]
+        return np.array(best_guess)
+        
+        
+    if 1:
+        LSE.initialize_with_guess(np.matrix([3]),np.matrix([1000]))
+        
+        measurements = estimates_data['control']*fps/100. / rdes**2
+        err = np.abs(estimates_data['opticflow'] - rdes)
+        indices = np.arange(0,1000)
+        best_guess = []
+        best_d0_guess = 3
+        for i, measurement in enumerate(measurements):
+            if i in indices:
+                t = estimates_data['time'][i]
+                Ht = H(t)
+                if 0:
+                    if i < 100:
+                        LSE.Pk = err[i]*100
+                else:
+                    LSE.Pk = err[i]*100
+                LSE.update([measurement], Ht)
+                best_guess.append(LSE.xhat[0,0]*Ht[0,0])
+                best_d0_guess = LSE.xhat[0,0]
+            else:
+                try:
+                    t = estimates_data['time'][i]
+                    Ht = H(t)[0,0]
+                    best_guess.append(best_d0_guess*Ht)
+                except:
+                    best_guess = [best_d0_guess]
+        return np.array(best_guess)
+        
+        
+    
+    if 0:
+        LSE.initialize_with_guess(np.matrix([3]),np.matrix([1000]))
+        
+        measurements = estimates_data['control']*fps/100. / rdes**2
+        err = np.abs(estimates_data['opticflow'] - rdes)
+        accsign = np.sign(estimates_data['control'])
+        indices = np.arange(100,1000)
+        best_guess = []
+        best_d0_guess = 3
+        if 1:
+            for i, measurement in enumerate(measurements):
+                relevant_indices = indices[indices<i]
+                if len(relevant_indices)>1:
+                    t = estimates_data['time'][relevant_indices]
+                    Ht = H(t)
+                    Wt = (1/(err**4)[relevant_indices]).tolist()
+                    LSE.fit(measurements[relevant_indices], Ht)
+                    best_guess.append(LSE.xhat[0,0]*Ht[-1,0])
+                    best_d0_guess = LSE.xhat[0,0]
+                else:
+                    try:
+                        t = estimates_data['time'][i]
+                        Ht = H(t)[0,0]
+                        best_guess.append(best_d0_guess*Ht)
+                    except:
+                        best_guess = [best_d0_guess]
+        if 0:
+            relevant_indices = indices
+            t = estimates_data['time'][relevant_indices]
+            Ht = H(t)
+            Wt = (1/(err**4)[relevant_indices]).tolist()
+            LSE.fit(measurements[relevant_indices], Ht)
+            
+            t = estimates_data['time']
+            Ht = H(t)
+            best_guess = LSE.xhat[0,0]*Ht[:,0]
+        return np.array(best_guess)
+    
+    if 0:
+        measurements = estimates_data['control']*fps/100. / rdes**2
+        err = np.abs( (estimates_data['opticflow'] - rdes) )
+        #indices = np.where( (estimates_data['control']>0.015) )[0]
+        indices = np.arange(100,1000)
+        print len(indices)
+        measurements = (measurements[indices]).tolist()
+        t = estimates_data['time'][indices]
+        Ht = H(t)
+        W = (1/(err**4)[indices]).tolist()
+        LSE.fit(measurements, Ht)
+        
+        t = estimates_data['time']
+        Ht = H(t)
+        best_guess = LSE.xhat[0,0]*Ht[:,0]
+        return best_guess
+    
 def plot(estimates_data, stepper_data=None):
     
     fig = plt.figure()
@@ -114,22 +221,13 @@ def plot(estimates_data, stepper_data=None):
     axof.plot(stepper_data['time'], stepper_data['velocity']/stepper_data['position'], 'blue')
     axctrl.plot(stepper_data['time'], stepper_data['control'], 'blue')
     
-    # plot estimates
-    posest = estimates_data['control']*(fps/100.) / rdes**2
-    #axpos.plot(estimates_data['time'], posest, '.', color='green')
-    measurements = dyneye_observer(estimates_data['control'], -0.1, 50.)
-    axpos.plot(estimates_data['time'], measurements, 'green', zorder=-10)
-
-    axof.plot(estimates_data['time'], estimates_data['opticflow'], 'red')
-
-    optic_flow_noise = get_optic_flow_noise_estimate(estimates_data, stepper_data)
-    print optic_flow_noise
+    # plot raw guess
+    guess = estimates_data['control']*fps/100. / rdes**2
+    axpos.plot(estimates_data['time'], guess, '.', color='green')
     
-    # 
-    
-    t, smoothed_state_means = kalman_smooth(estimates_data, stepper_data)
-    axpos.plot(t,smoothed_state_means[:,0], 'red')
-    axvel.plot(t,-1*smoothed_state_means[:,1], 'red')
+    best_guess = sequential_least_squares_observer(estimates_data)
+
+    axpos.plot(estimates_data['time'], best_guess, 'red')
 
     plt.show()
     
