@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pickle
 import matplotlib.pyplot as plt
@@ -25,36 +26,6 @@ def fix_array_size(data):
             data[key] = item
     return data
     
-'''
-def dyneye_observer(control, rdes, fps):
-    posest = control / rdes**2
-    return posest
-    
-def kalman_smooth(estimates_data, stepper_data):
-    
-    estimates_data, stepper_data = interpolate_to_same_time(estimates_data, stepper_data)    
-    measurements = dyneye_observer(estimates_data['control'], -0.1, 50.)
-    
-    A = np.array([[1,1/(2*np.pi*50.)],[0,1]])
-    C = np.array([[1,0]])
-    
-    optic_flow_noise = get_optic_flow_noise_estimate(estimates_data, stepper_data)
-    R = np.eye(1)
-    R[0,0] = 1/optic_flow_noise**2
-    Q = np.eye(2)*1e-4#np.array([[1, 0], [0, 1]])
-    initial_covariance = 100*np.eye(2)
-    
-    #xsmooth, vsmooth = kalman_smoother(measurements[400:]*10, A, C, Q, R, np.array([0,0]), 100*np.eye(2), plot=True)
-    
-    #return xsmooth
-    
-    kf = pykalman.KalmanFilter(transition_matrices = A, observation_matrices = C, observation_covariance = R, transition_covariance = Q, initial_state_covariance=initial_covariance)
-    #kf = pykalman.KalmanFilter(transition_matrices = A, observation_matrices = C, observation_covariance = [measurement_noise], transition_covariance = process_noise, initial_state_covariance=initial_covariance)
-    (smoothed_state_means, smoothed_state_covariances) = kf.filter(measurements)
-    
-    return stepper_data['time'], smoothed_state_means
-'''
-
 def interpolate_to_same_time(estimates_data, stepper_data):
     
     estimates_data = fix_array_size(estimates_data)
@@ -88,42 +59,45 @@ def interpolate_to_same_time(estimates_data, stepper_data):
     
 
 def sequential_least_squares_observer(estimates_data):
-    optic_flow_noise = 0.006
-    rdes = -.1
-    fps = 50.
+    rdes = estimates_data['rdes']
+    fps = estimates_data['fps']
     
     LSE = least_squares.LeastSquaresEstimator()
     Hfunc = lambda t: np.exp(rdes*t)
     H = least_squares.H_LTI([Hfunc])
-    
+    LSE.initialize_with_guess(np.matrix([3]),np.matrix([1000]))
+
+    # observer    
+    measurements = estimates_data['control']*fps/100. / rdes**2
+
+    err = (estimates_data['filteredopticflow'] - rdes)**2
+    position = []
+    velocity = []
+    smoothing = False
+    for i, measurement in enumerate(measurements):
+        t = estimates_data['time'][i]
+        Ht = H(t)
         
+        #########################################################
+        # sketchy bit
+        if np.abs(estimates_data['filteredopticflowdot'][i]) > 0.01 or i < 20:
+            if smoothing is False:
+                LSE.Pk = 100
+                print LSE.Pk
+        else:
+            smoothing = True
         
-    if 1:
-        LSE.initialize_with_guess(np.matrix([3]),np.matrix([1000]))
+        #LSE.Pk = 40*estimates_data['filteredopticflowdot'][i]**2
+        #########################################################
         
-        measurements = estimates_data['control']*fps/100. / rdes**2
-        err = np.abs(estimates_data['filteredopticflow'] - rdes)
-        indices = np.arange(0,1000)
-        best_guess = []
-        best_d0_guess = 3
-        for i, measurement in enumerate(measurements):
-            if i in indices:
-                t = estimates_data['time'][i]
-                Ht = H(t)
-                if i<100:
-                    LSE.Pk = 100
-                #LSE.Pk = 40*estimates_data['filteredopticflowdot'][i]**2
-                LSE.update([measurement], Ht)
-                best_guess.append(LSE.xhat[0,0]*Ht[0,0])
-                best_d0_guess = LSE.xhat[0,0]
-            else:
-                try:
-                    t = estimates_data['time'][i]
-                    Ht = H(t)[0,0]
-                    best_guess.append(best_d0_guess*Ht)
-                except:
-                    best_guess = [best_d0_guess]
-        return np.array(best_guess)
+        LSE.update([measurement], Ht)
+        position.append(LSE.xhat[0,0]*Ht[0,0])
+        velocity.append(LSE.xhat[0,0]*rdes*Ht[0,0])
+
+    position = np.array(position)
+    velocity = np.array(velocity)
+
+    return position, velocity
         
         
     
@@ -136,19 +110,24 @@ def plot(estimates_data, stepper_data=None):
     axof = fig.add_subplot(153)
     axofdot = fig.add_subplot(154)
     axctrl = fig.add_subplot(155)    
+    axes = [axpos, axvel, axof, axofdot, axctrl]
     
-    fps = 50.
-    rdes = -.1
+    fps = estimates_data['fps']
+    rdes = estimates_data['rdes']
     
     estimates_data, stepper_data = interpolate_to_same_time(estimates_data, stepper_data)    
     noise = get_optic_flow_noise_estimate(estimates_data, stepper_data)
-    print noise
+    print 'optic flow noise estimate: ', noise
+    
+    print np.max(stepper_data['velocity'])
+    index_stop = np.where(np.diff(stepper_data['position'])==0)[0][2]
+    tstop = stepper_data['time'][index_stop]
     
     # plot raw STEPPER data
-    axpos.plot(stepper_data['time'], stepper_data['position'], 'blue')
-    axvel.plot(stepper_data['time'], stepper_data['velocity'], 'blue')
-    axof.plot(stepper_data['time'], stepper_data['velocity']/stepper_data['position'], 'blue')
-    axctrl.plot(stepper_data['time'], stepper_data['control'], 'blue')
+    axpos.plot(stepper_data['time'], stepper_data['position'], 'blue', linewidth=3)
+    axvel.plot(stepper_data['time'], stepper_data['velocity'], 'blue', linewidth=3)
+    axof.plot(stepper_data['time'], stepper_data['velocity']/stepper_data['position'], 'blue', linewidth=3)
+    axctrl.plot(stepper_data['time'], stepper_data['control'], 'blue', linewidth=3)
     
     # plot estimates data
     axof.plot(estimates_data['time'], estimates_data['filteredopticflow'], 'red')
@@ -158,30 +137,45 @@ def plot(estimates_data, stepper_data=None):
     guess = estimates_data['control']*fps/100. / rdes**2
     axpos.plot(estimates_data['time'], guess, '.', color='green')
     
-    best_guess = sequential_least_squares_observer(estimates_data)
+    lse_position, lse_velocity = sequential_least_squares_observer(estimates_data)
 
-    axpos.plot(estimates_data['time'], best_guess, 'red')
+    axpos.plot(estimates_data['time'], lse_position, 'red')
+    axvel.plot(estimates_data['time'], lse_velocity, 'red')
+
+    # formatting
+    for ax in axes:
+        ax.set_xlim(0, tstop)
+        
+    axpos.set_ylim(-2,2.5)
+    axof.set_ylim(rdes*(1+0.2), 0)
 
     plt.show()
     
     
 def get_optic_flow_noise_estimate(estimates_data, stepper_data):
     stepper_optic_flow = stepper_data['velocity']/stepper_data['position']
-    
     difference = estimates_data['opticflow'] - stepper_optic_flow
-    
     variance = np.mean(difference[200:-200]**2)
-    
-    return variance
+    return variance**(1/2.)
     
 if __name__=='__main__':
 
     parser = OptionParser()
+    parser.add_option("--f", type="str", dest="directory", default='',
+                        help="directory name that has the estimates and stepper file in it")
     parser.add_option("--estimates", type="str", dest="estimates", default='',
                         help="filename to plot")
     parser.add_option("--stepper", type="str", dest="stepper", default='',
                         help="filename to plot") 
     (options, args) = parser.parse_args()
+    
+    if len(options.directory) > 0:
+        files = os.listdir(options.directory)
+        for fname in files:
+            if 'stepper' in fname:
+                options.stepper = os.path.join(options.directory, fname)
+            if 'estimates' in fname and 'image' not in fname:
+                options.estimates = os.path.join(options.directory, fname)
     
     f_estimates = open(options.estimates)
     estimates_data = pickle.load(f_estimates)
