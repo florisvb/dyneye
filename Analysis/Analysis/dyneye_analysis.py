@@ -1,3 +1,30 @@
+"""
+-----------------------------------------------------------------------
+dyneye
+Copyright (C) Floris van Breugel, 2013.
+  
+florisvb@gmail.com
+
+Released under the GNU GPL license, Version 3
+
+This file is part of dyneye.
+
+dyneye is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+    
+dyneye is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public
+License for more details.
+
+You should have received a copy of the GNU General Public
+License along with dyneye.  If not, see <http://www.gnu.org/licenses/>.
+
+------------------------------------------------------------------------
+"""
+
 from __future__ import division
 
 import fly_plot_lib.set_params
@@ -91,7 +118,7 @@ def plot(estimates_data, stepper_data=None, ukf_data=None):
     axpos.plot(stepper_data['time'], stepper_data['position'], 'blue', linewidth=3)
     axvel.plot(stepper_data['time'], stepper_data['velocity'], 'blue', linewidth=3)
     axof.plot(stepper_data['time'], stepper_data['velocity']/stepper_data['position'], 'blue', linewidth=3)
-    axctrl.plot(stepper_data['time'], stepper_data['control'], 'blue', linewidth=3)
+    axctrl.plot(stepper_data['time'], stepper_data['control'], 'blue', linewidth=1)
     
     # plot estimates data
     axof.plot(estimates_data['time'], estimates_data['filteredopticflow'], 'red')
